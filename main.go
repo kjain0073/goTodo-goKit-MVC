@@ -2,45 +2,58 @@ package main
 
 import (
 	"context"
-	"log"
+	"flag"
+	"fmt"
 	"net/http"
 	"os"
 	"os/signal"
-	"time"
+	"syscall"
 
-	"github.com/go-chi/chi"
-	"github.com/go-chi/chi/middleware"
-	"github.com/kjain0073/go-Todo/middlewareTodo"
-	"github.com/kjain0073/go-Todo/router"
+	"github.com/go-kit/log/level"
+	mgo "gopkg.in/mgo.v2"
+
+	"github.com/kjain0073/go-Todo/adapters"
+	"github.com/kjain0073/go-Todo/tasks"
+	"github.com/kjain0073/go-Todo/view"
 )
 
 func main() {
-	stopChan := make(chan os.Signal) // correct way to stop channel
-	signal.Notify(stopChan, os.Interrupt)
-	r := chi.NewRouter()
-	r.Use(middleware.Logger)
-	r.Get("/", middlewareTodo.HomeHandler)
-	r.Mount("/todo", router.TodoHandlers())
+	var httpAddr = flag.String("http", ":8080", "http listen address")
 
-	srv := &http.Server{
-		Addr:         middlewareTodo.Port,
-		Handler:      r,
-		ReadTimeout:  60 * time.Second,
-		WriteTimeout: 60 * time.Second,
-		IdleTimeout:  60 * time.Second,
+	//init logger
+	logger := adapters.InitLogger()
+	level.Info(logger).Log("msg", "service started")
+	defer level.Info(logger).Log("msg", "service ended")
+
+	var db *mgo.Database
+	adapters.SetConnection(logger)
+	db = adapters.GetConnection()
+
+	flag.Parse()
+	ctx := context.Background()
+
+	//init a service
+	var srv tasks.Service
+	{
+		repository := view.NewRepo(db, logger)
+		srv = view.NewService(repository, logger)
 	}
+
+	errs := make(chan error)
+
 	go func() {
-		log.Println("listening on port", middlewareTodo.Port)
-		if err := srv.ListenAndServe(); err != nil {
-			log.Printf("listen:%s\n", err)
-		}
+		c := make(chan os.Signal, 1)
+		signal.Notify(c, syscall.SIGINT, syscall.SIGTERM)
+		errs <- fmt.Errorf("%s", <-c)
 	}()
 
-	<-stopChan
-	log.Println("Shutting down Server...")
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	srv.Shutdown(ctx)
-	defer cancel()
-	log.Println("Server stopped Gracefully!")
+	endpoints := tasks.MakeEndpoints(srv)
 
+	go func() {
+		fmt.Println("listening on port", *httpAddr)
+		handler := tasks.NewHTTPServer(ctx, endpoints)
+		errs <- http.ListenAndServe(*httpAddr, handler)
+	}()
+
+	level.Error(logger).Log("exit", <-errs)
 }
