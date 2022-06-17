@@ -37,7 +37,7 @@ func NewRepo(db *mgo.Database, logger log.Logger) Repository {
 	}
 }
 
-func (repo *repo) GetTodos(ctx context.Context) ([]models.TodoEntity, error) {
+func (repo repo) GetTodos(ctx context.Context) ([]models.TodoEntity, error) {
 	todos := []models.TodoEntity{}
 	if err := repo.db.C(CollectionName).Find(bson.M{}).All(&todos); err != nil {
 		return nil, errors.New("unable to Fetch Todos")
@@ -46,7 +46,7 @@ func (repo *repo) GetTodos(ctx context.Context) ([]models.TodoEntity, error) {
 	return todos, nil
 }
 
-func (repo *repo) CreateTodo(ctx context.Context, todo models.TodoEntity) error {
+func (repo repo) CreateTodo(ctx context.Context, todo models.TodoEntity) error {
 
 	if todo.Title == "" {
 		return errors.New("title is required")
@@ -59,7 +59,7 @@ func (repo *repo) CreateTodo(ctx context.Context, todo models.TodoEntity) error 
 	return nil
 }
 
-func (repo *repo) DeleteTodo(ctx context.Context, id string) error {
+func (repo repo) DeleteTodo(ctx context.Context, id string) error {
 	if !bson.IsObjectIdHex(id) {
 		return errors.New("invalid Task Id")
 	}
@@ -71,7 +71,7 @@ func (repo *repo) DeleteTodo(ctx context.Context, id string) error {
 	return nil
 }
 
-func (repo *repo) UpdateTodo(ctx context.Context, id string, title string, completed bool) error {
+func (repo repo) UpdateTodo(ctx context.Context, id string, title string, completed bool) error {
 
 	if !bson.IsObjectIdHex(id) {
 		return errors.New("id is invalid")
